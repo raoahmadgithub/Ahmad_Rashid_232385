@@ -1,70 +1,37 @@
 ﻿using System;
-using System.Diagnostics;
+using System.Threading;
 
 class Program
 {
-    static void Main(string[] args)
+    static void Worker(object? arg)
     {
-        if (args.Length > 0 && args[0] == "--child")
-        {
-            RunAsChild();
-        }
-        else
-        {
-            RunAsParent();
-        }
+        long id = (long)arg!;
+        int cpu = Thread.GetCurrentProcessorId();
+
+        Console.WriteLine($"Thread {id}: starting (running on logical CPU {cpu})");
     }
 
-    static void RunAsChild()
+    static void Main()
     {
-        Console.WriteLine($"[Child] PID = {Environment.ProcessId}");
+        int numCores = Environment.ProcessorCount;
 
-        int counter = 100;
-        counter += 50;
+        Console.WriteLine($"Detected logical cores: {numCores}");
 
-        Console.WriteLine($"[Child] final counter = {counter}");
-    }
+        Thread[] threads = new Thread[numCores];
 
-    static void RunAsParent()
-    {
-        Console.WriteLine($"[Parent] PID = {Environment.ProcessId}");
-
-        int counter = 100;
-        counter += 1;
-
-        string processPath = Environment.ProcessPath!;
-
-        var startInfo = new ProcessStartInfo
+        for (int i = 0; i < numCores; i++)
         {
-            FileName = processPath,
-            UseShellExecute = true
-        };
+            int idx = i; // Local copy avoids closure/shared-variable issue
 
-        // When running with the .NET host, ProcessPath can be dotnet.exe.
-        // In that case, pass the current DLL path before --child.
-        string processName = System.IO.Path.GetFileNameWithoutExtension(processPath);
-
-        if (processName.Equals("dotnet", StringComparison.OrdinalIgnoreCase))
-        {
-            startInfo.ArgumentList.Add(Environment.GetCommandLineArgs()[0]);
+            threads[i] = new Thread(() => Worker((long)idx));
+            threads[i].Start();
         }
 
-        startInfo.ArgumentList.Add("--child");
-
-        using Process? child = Process.Start(startInfo);
-
-        if (child == null)
+        for (int i = 0; i < numCores; i++)
         {
-            Console.WriteLine("Failed to start child process.");
-            return;
+            threads[i].Join();
         }
 
-        child.WaitForExit();
-
-        Console.WriteLine($"[Parent] final counter = {counter}");
-        Console.WriteLine(
-            "[Parent] Parent and child counters were modified independently " +
-            "(separate address spaces)."
-        );
+        Console.WriteLine($"All {numCores} threads completed.");
     }
 }
